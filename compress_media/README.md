@@ -2,18 +2,39 @@
 
 macOS 下的 PDF、静态图片压缩脚本。Python 负责交互和批量处理；运行时临时编译 Swift 程序，调用 macOS 的 PDFKit、AppKit 和 CoreGraphics。原文件不会被覆盖。
 
-## 环境要求
+## 从零安装（macOS）
 
-- macOS、Python 3
-- Xcode Command Line Tools 提供的 `swiftc`；如未安装，可运行 `xcode-select --install`
-- 无需安装额外的 Python 包
+本脚本只支持 macOS。需要 Python 3 和 Apple 的 Xcode Command Line Tools；无需额外安装 Python 包，也不必安装完整 Xcode。
+
+1. 从 [Python 官网 macOS 下载页](https://www.python.org/downloads/macos/)下载并安装 Python 3。安装完成后重新打开“终端”，检查：
+
+   ```bash
+   python3 --version
+   ```
+
+   如果显示版本号，继续下一步；如果提示找不到命令，先确认安装已完成，并重新打开终端。
+2. 在终端安装 Xcode Command Line Tools，按系统弹窗完成安装：
+
+   ```bash
+   xcode-select --install
+   ```
+
+   随后检查 Swift 编译器：
+
+   ```bash
+   swiftc --version
+   ```
+
+   如果系统提示命令行工具已经安装，可直接检查 `swiftc --version`。安装步骤可能需要网络连接；脚本处理文件时使用本机 macOS 框架。
+3. 将整个 `python_shell` 项目放在本机；确保此目录中存在 `compress_media.py`，再运行下一节命令。
 
 ## 使用方式
 
-在终端运行：
+在终端进入脚本所在目录并运行（把 `/path/to/python_shell` 换成实际存放项目的路径）：
 
 ```bash
-python3 /Users/liyan/Documents/code/otherhouse/python_shell/compress_media/compress_media.py
+cd "/path/to/python_shell/compress_media"
+python3 compress_media.py
 ```
 
 根据提示：
@@ -25,7 +46,7 @@ python3 /Users/liyan/Documents/code/otherhouse/python_shell/compress_media/compr
 也可以预先传入路径和目标大小，随后仍会出现压缩方式选择：
 
 ```bash
-python3 /Users/liyan/Documents/code/otherhouse/python_shell/compress_media/compress_media.py "/path/to/input.pdf" --max-total-size 15
+python3 compress_media.py "/path/to/input.pdf" --max-total-size 15
 ```
 
 支持 PDF 和 `.jpg`、`.jpeg`、`.png`、`.tif`、`.tiff`、`.bmp`、`.heic`、`.heif` 图片。图片格式是否能够读取，还取决于当前 macOS 的解码支持。

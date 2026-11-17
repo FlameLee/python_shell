@@ -2,25 +2,37 @@
 
 交互式 PDF 拆分脚本。按页面直接拆分，不重新渲染图片或压缩页面；拆分结果保存在源 PDF 所在目录，原文件不变。
 
-## 环境要求
+## 从零安装（macOS）
 
-- Python 3
-- `pypdf`：`python3 -m pip install pypdf`
+1. 从 [Python 官网 macOS 下载页](https://www.python.org/downloads/macos/)下载并安装 Python 3。安装完成后重新打开“终端”，检查：
 
-如果 macOS 的 Homebrew Python 提示 `externally-managed-environment`，建议使用虚拟环境：
+   ```bash
+   python3 --version
+   ```
 
-```bash
-python3 -m venv .venv
-.venv/bin/python -m pip install pypdf
-.venv/bin/python split_pdf.py
-```
+2. 将整个 `python_shell` 项目放在本机；在终端进入 `split_pdf` 目录：
+
+   ```bash
+   cd "/path/to/python_shell/split_pdf"
+   ```
+
+3. 为此脚本创建独立的 Python 环境，并安装 `pypdf`：
+
+   ```bash
+   python3 -m venv .venv
+   .venv/bin/python -m pip install pypdf
+   .venv/bin/python -c "import pypdf; print(pypdf.__version__)"
+   ```
+
+   最后一行能显示版本号，就表示安装成功。依赖只安装在这个脚本的 `.venv` 环境中，不会修改系统 Python；如果直接用其他 `python3` 启动脚本，仍可能提示缺少 `pypdf`。Homebrew Python 若阻止直接运行 `pip install`，也请使用上述虚拟环境方式。
 
 ## 使用
 
-在终端运行：
+以后每次打开终端，进入该目录并用虚拟环境里的 Python 运行（把 `/path/to/python_shell` 换成实际存放项目的路径）：
 
 ```bash
-python3 split_pdf.py
+cd "/path/to/python_shell/split_pdf"
+.venv/bin/python split_pdf.py
 ```
 
 1. 输入 PDF 文件的绝对路径（路径含空格时可直接粘贴，也可加单引号或双引号）。
