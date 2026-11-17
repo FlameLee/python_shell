@@ -246,6 +246,35 @@ def compression_profile(source_bytes, target_bytes):
 
 
 # 【AI生成】
+def choose_compression_profile(source_bytes, target_bytes):
+    """Show compression profiles from clearest to smallest and return the selection."""
+    profiles = [
+        ("清晰优先", 3200, 0.92, "最高分辨率与质量；结果可能较大"),
+        ("推荐", 2800, 0.88, "清晰度与体积折中，建议先试"),
+        ("均衡", 2400, 0.82, "体积更小，文字细节略有损失"),
+        ("较小体积", 2000, 0.74, "压缩更强，细小文字可能变糊"),
+        ("最小体积", 1600, 0.66, "压缩最强，不适合需要辨认小字的扫描件"),
+    ]
+    print(f"\n文件总大小：{source_bytes / 1024**2:.2f} MB；目标：{target_bytes / 1024**2:.2f} MB")
+    print("请选择压缩档位；默认推荐自动迭代到目标，逐轮降低画质直到达标或用尽档位：")
+    for index, (name, pixels, quality, description) in enumerate(profiles, 1):
+        print(f"  {index}. {name} - 最长边 {pixels}px，JPEG 质量 {quality:.2f}；{description}")
+    print("  6. 自动迭代到目标 [默认推荐] - 从较清晰档开始尝试，必要时逐步降低")
+    while True:
+        try:
+            choice = input("输入 1-6，直接回车使用自动迭代：").strip() or "6"
+        except EOFError:
+            print("当前运行环境无法交互，自动使用自动迭代档。", file=sys.stderr)
+            choice = "6"
+        if choice == "6":
+            return None
+        if choice.isdigit() and 1 <= int(choice) <= len(profiles):
+            _, pixels, quality, _ = profiles[int(choice) - 1]
+            return pixels, quality
+        print("请输入 1 到 6。", file=sys.stderr)
+
+
+# 【AI生成】
 def compile_native_helper(directory):
     """Compile the embedded PDFKit helper once for this compression run."""
     # Swift compiler is provided by Xcode Command Line Tools on macOS.
@@ -282,8 +311,29 @@ def output_path(output, relative, reserved):
 
 
 # 【AI生成】
+def run_compression_pass(helper, files, source_root, output, max_pixels, quality):
+    """Compress every source once with one profile and return output paths and sizes."""
+    results = []
+    for path in files:
+        relative = path.relative_to(source_root)
+        destination = output / relative.parent / f"{relative.stem}_compress"
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        mode = "pdf" if path.suffix.lower() == ".pdf" else "image"
+        result = subprocess.run(
+            [str(helper), mode, str(path), str(destination), str(max_pixels), str(quality)],
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        actual_destination = Path(result.stdout.strip())
+        results.append((relative, actual_destination, actual_destination.stat().st_size))
+    return results
+
+
+# 【AI生成】
 def main():
-    """Collect interactive options and compress each media file once with macOS tools."""
+    """Collect compression options and optionally iterate until the size target is met."""
     # CLI arguments are optional so running the script alone starts the prompts.
     parser = argparse.ArgumentParser(
         description="快速压缩 PDF 和静态图片：使用 macOS 自带框架处理。"
@@ -310,8 +360,8 @@ def main():
 
     # Aggregate source size chooses a single rendering profile for the batch.
     source_bytes = sum(path.stat().st_size for path in files)
-    # One shared profile keeps the batch fast and consistent.
-    max_pixels, quality = compression_profile(source_bytes, target_bytes)
+    # Offer manual quality profiles or iterative size targeting.
+    selected_profile = choose_compression_profile(source_bytes, target_bytes)
     # Track the total and any per-file errors for the final status.
     source_root = source if source.is_dir() else source.parent
     compressed_total = 0
@@ -328,41 +378,43 @@ def main():
 
         # Output folder is created only after the native helper compiles successfully.
         output = create_output_dir(source)
-        for path in files:
-            # Relative path preserves subfolders for directory input.
-            relative = path.relative_to(source_root)
-            # Each source file receives a distinct output base.
-            destination = output_path(output, relative, reserved_outputs)
-            destination.parent.mkdir(parents=True, exist_ok=True)
+        profiles = (
+            [(3200, 0.92), (2800, 0.88), (2400, 0.82), (2000, 0.74),
+             (1600, 0.66), (1400, 0.60), (1200, 0.54), (1000, 0.48)]
+            if selected_profile is None
+            else [selected_profile]
+        )
+        results = []
+        for attempt, (max_pixels, quality) in enumerate(profiles, 1):
+            # Delete prior attempts so each retry starts from untouched source files.
+            for existing in output.rglob("*_compress.*"):
+                existing.unlink(missing_ok=True)
             try:
-                # Extension selects PDFKit for documents and AppKit for raster images.
-                mode = "pdf" if path.suffix.lower() == ".pdf" else "image"
-                result = subprocess.run(
-                    [str(helper), mode, str(path), str(destination), str(max_pixels), str(quality)],
-                    check=True,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    text=True,
-                )
-                # The native encoder returns the real output path, including its extension.
-                actual_destination = Path(result.stdout.strip())
-                compressed_total += actual_destination.stat().st_size
-                print(
-                    f"完成：{relative} -> {actual_destination.relative_to(output)} "
-                    f"({actual_destination.stat().st_size / 1024**2:.2f} MB)"
+                results = run_compression_pass(
+                    helper, files, source_root, output, max_pixels, quality
                 )
             except (OSError, subprocess.CalledProcessError) as error:
                 failures += 1
-                for possible_output in output.glob(f"{destination.name}.*"):
-                    possible_output.unlink(missing_ok=True)
-                # Capture native diagnostic text without dumping command details.
                 details = error.stderr.strip() if isinstance(error, subprocess.CalledProcessError) else str(error)
-                print(f"处理失败：{relative}（{details}）", file=sys.stderr)
+                print(f"处理失败：{details}", file=sys.stderr)
+                break
+            compressed_total = sum(size for _, _, size in results)
+            print(
+                f"第 {attempt}/{len(profiles)} 轮：最长边 {max_pixels}px，JPEG 质量 {quality:.2f}，"
+                f"合计 {compressed_total / 1024**2:.2f} MB"
+            )
+            if compressed_total <= target_bytes:
+                break
 
     print(f"\n输出目录：{output}")
     print(f"合计：{compressed_total / 1024**2:.2f} MB；目标：{target_bytes / 1024**2:.2f} MB")
     if compressed_total > target_bytes:
-        print("提示：实际合计超过目标；本脚本每份 PDF 只压缩一次以优先保证速度。", file=sys.stderr)
+        print("提示：已使用可用的最低画质档，结果仍超过目标大小。", file=sys.stderr)
+    for relative, actual_destination, size in results:
+        print(
+            f"完成：{relative} -> {actual_destination.relative_to(output)} "
+            f"({size / 1024**2:.2f} MB)"
+        )
     if failures:
         print(f"有 {failures} 个文件处理失败。", file=sys.stderr)
         return 1
