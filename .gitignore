@@ -1,0 +1,4 @@
+.idea/
+
+.ai_stats_*.jsonl
+.ai_stats_upload_cache.enc
